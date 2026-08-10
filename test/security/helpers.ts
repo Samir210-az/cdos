@@ -55,6 +55,12 @@ export interface Fixtures {
   supervisorMember: string; // org A, rol SUPERVISOR, scope SELECTED_BRANCHES -> branchA1
   supervisorUserId: string;
   childX: string; // uydurma uşaq UUID (children cədvəli yoxdur, opaque id kimi istifadə olunur)
+  // --- Faz 3.3 əlavələri ---
+  childA1: string;   // Org A-nın real child sətri (branchA1-də)
+  childA2: string;   // Org A-nın 2-ci child sətri
+  childB1: string;   // Org B-nin child sətri
+  parentA1: string;  // Org A parent
+  parentA2: string;  // Org A parent (Parent A1-in uşağına aid DEYİL)
 }
 
 /** cdos_migrator ilə (BYPASSRLS) test fixture-larını yaradır. Hər seed sətrində organization_id AÇIQ təyin olunur (Faz 3.1/3.2 seed qaydası). */
@@ -131,8 +137,62 @@ export async function seedFixtures(): Promise<Fixtures> {
       supervisorRole,
     ]);
 
-    // children cədvəli hələ yoxdur — opaque test UUID istifadə olunur (yalnız FK olmadan child_id sütununu doldurmaq üçün)
-    const childX = '00000000-0000-4000-8000-000000000001';
+    // children cədvəli artıq mövcuddur (Faz 3.3). Köhnə (Faz 3.2) testlərdə
+    // istifadə olunan opaque UUID-lər İNDİ REAL children sətirləri kimi
+    // yaradılır ki, yeni composite FK (fk_assignment_child) pozulmasın və
+    // Faz 3.2 regression testləri DƏYİŞDİRİLMƏDƏN keçsin.
+    const legacyChildIds = [
+      '00000000-0000-4000-8000-000000000001', // childX
+      '00000000-0000-4000-8000-000000000002', // Test14 (childY)
+      '00000000-0000-4000-8000-000000000003', // Test16 (childZ)
+      '00000000-0000-4000-8000-000000000004', // Test17 (childW)
+    ];
+    for (const [i, id] of legacyChildIds.entries()) {
+      await c.query(
+        `INSERT INTO children (id, organization_id, branch_id, local_code, first_name, last_name, dob)
+         VALUES ($1, $2, $3, $4, 'Legacy', 'Child', '2018-01-01')`,
+        [id, orgA, branchA1, `LEGACY-${i}`],
+      );
+    }
+    const childX = legacyChildIds[0];
+
+    // --- Faz 3.3 üçün yeni, real child/parent fixture-ları ---
+    const childA1 = (await c.query(
+      `INSERT INTO children (organization_id, branch_id, local_code, first_name, last_name, dob)
+       VALUES ($1,$2,'CH-A-0001','Aysel','Məmmədova','2019-03-10') RETURNING id`,
+      [orgA, branchA1],
+    )).rows[0].id;
+    const childA2 = (await c.query(
+      `INSERT INTO children (organization_id, branch_id, local_code, first_name, last_name, dob)
+       VALUES ($1,$2,'CH-A-0002','Kamran','Əliyev','2020-06-01') RETURNING id`,
+      [orgA, branchA1],
+    )).rows[0].id;
+    const childB1 = (await c.query(
+      `INSERT INTO children (organization_id, branch_id, local_code, first_name, last_name, dob)
+       VALUES ($1,$2,'CH-B-0001','Nihad','Hüseynov','2018-11-20') RETURNING id`,
+      [orgB, branchB1],
+    )).rows[0].id;
+
+    const uParentA1 = await mkUser(`parent-a1-${Date.now()}@test.local`);
+    const uParentA2 = await mkUser(`parent-a2-${Date.now()}@test.local`);
+    const parentA1 = (await c.query(
+      `INSERT INTO parents (organization_id, user_id, phone) VALUES ($1,$2,'+994500000001') RETURNING id`,
+      [orgA, uParentA1],
+    )).rows[0].id;
+    const parentA2 = (await c.query(
+      `INSERT INTO parents (organization_id, user_id, phone) VALUES ($1,$2,'+994500000002') RETURNING id`,
+      [orgA, uParentA2],
+    )).rows[0].id;
+    await c.query(
+      `INSERT INTO child_guardians (organization_id, child_id, parent_id, relation_type, is_primary)
+       VALUES ($1,$2,$3,'mother',true)`,
+      [orgA, childA1, parentA1],
+    );
+    await c.query(
+      `INSERT INTO child_guardians (organization_id, child_id, parent_id, relation_type, is_primary)
+       VALUES ($1,$2,$3,'mother',true)`,
+      [orgA, childA2, parentA2],
+    );
 
     return {
       orgA,
@@ -154,6 +214,11 @@ export async function seedFixtures(): Promise<Fixtures> {
       supervisorMember,
       supervisorUserId: uSupervisor,
       childX,
+      childA1,
+      childA2,
+      childB1,
+      parentA1,
+      parentA2,
     };
   } finally {
     await c.end();
@@ -163,7 +228,17 @@ export async function seedFixtures(): Promise<Fixtures> {
 export async function cleanupFixtures(): Promise<void> {
   const c = await migratorClient();
   try {
+    await c.query(`DELETE FROM medical_background`);
+    await c.query(`DELETE FROM developmental_history`);
+    await c.query(`DELETE FROM communication_profile`);
+    await c.query(`DELETE FROM behavior_profile`);
+    await c.query(`DELETE FROM sensory_profile`);
+    await c.query(`DELETE FROM educational_info`);
+    await c.query(`DELETE FROM emergency_contacts`);
+    await c.query(`DELETE FROM child_guardians`);
     await c.query(`DELETE FROM specialist_child_assignments`);
+    await c.query(`DELETE FROM parents`);
+    await c.query(`DELETE FROM children`);
     await c.query(`DELETE FROM member_branches`);
     await c.query(`DELETE FROM member_roles`);
     await c.query(`DELETE FROM organization_members`);

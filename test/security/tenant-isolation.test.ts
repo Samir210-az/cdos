@@ -65,8 +65,31 @@ describe('CDOS Faz 3.2 — Security & Tenant Isolation Tests', () => {
     expect(children).not.toContain(fx.childX);
   });
 
-  test.skip('TEST 6 Parent A → öz uşağı (DEFERRED: parents/children cədvəlləri 011+ scope-undadır)', () => {});
-  test.skip('TEST 7 Parent A → başqa parent uşağı (DEFERRED: eyni səbəb)', () => {});
+  test('TEST 6 Parent A → öz uşağını (child_guardians vasitəsilə) görür — İNDİ REAL (parents/children Faz 3.3-də yarandı)', async () => {
+    const rows = await runAsApp(fx.orgA, async (c) => {
+      const r = await c.query(
+        `SELECT ch.* FROM children ch
+         JOIN child_guardians g ON g.child_id = ch.id AND g.organization_id = ch.organization_id
+         WHERE g.parent_id = $1 AND ch.id = $2`,
+        [fx.parentA1, fx.childA1],
+      );
+      return r.rows;
+    });
+    expect(rows.length).toBe(1);
+  });
+
+  test('TEST 7 Parent A → başqa valideynin uşağını görmür (DENIED) — İNDİ REAL', async () => {
+    const rows = await runAsApp(fx.orgA, async (c) => {
+      const r = await c.query(
+        `SELECT ch.* FROM children ch
+         JOIN child_guardians g ON g.child_id = ch.id AND g.organization_id = ch.organization_id
+         WHERE g.parent_id = $1 AND ch.id = $2`,
+        [fx.parentA1, fx.childA2], // childA2 parentA2-yə aiddir, parentA1-ə YOX
+      );
+      return r.rows;
+    });
+    expect(rows.length).toBe(0);
+  });
   test.skip('TEST 8 Cross-center ACTIVE consent → limited access (DEFERRED: consents/data_shares 011+ scope-undadır)', () => {});
   test.skip('TEST 9 Cross-center REVOKED consent → DENIED (DEFERRED: eyni səbəb)', () => {});
 
