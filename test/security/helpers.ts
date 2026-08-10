@@ -228,6 +228,38 @@ export async function seedFixtures(): Promise<Fixtures> {
 export async function cleanupFixtures(): Promise<void> {
   const c = await migratorClient();
   try {
+    // Faz 3.9: finance ledger cədvəlləri (fiziki-DELETE/no-update trigger-ləri
+    // YALNIZ test cleanup üçün müvəqqəti deaktiv edilir).
+    await c.query(`ALTER TABLE child_credits DISABLE TRIGGER trg_child_credits_no_delete`);
+    await c.query(`DELETE FROM child_credits`);
+    await c.query(`ALTER TABLE child_credits ENABLE TRIGGER trg_child_credits_no_delete`);
+
+    await c.query(`ALTER TABLE refund_allocations DISABLE TRIGGER trg_refund_allocations_no_delete`);
+    await c.query(`DELETE FROM refund_allocations`);
+    await c.query(`ALTER TABLE refund_allocations ENABLE TRIGGER trg_refund_allocations_no_delete`);
+
+    await c.query(`ALTER TABLE refunds DISABLE TRIGGER trg_refunds_no_delete`);
+    await c.query(`DELETE FROM refunds`);
+    await c.query(`ALTER TABLE refunds ENABLE TRIGGER trg_refunds_no_delete`);
+
+    await c.query(`ALTER TABLE payment_allocations DISABLE TRIGGER trg_payment_allocations_no_delete`);
+    await c.query(`DELETE FROM payment_allocations`);
+    await c.query(`ALTER TABLE payment_allocations ENABLE TRIGGER trg_payment_allocations_no_delete`);
+
+    await c.query(`ALTER TABLE payments DISABLE TRIGGER trg_payments_no_delete`);
+    await c.query(`DELETE FROM payments`);
+    await c.query(`ALTER TABLE payments ENABLE TRIGGER trg_payments_no_delete`);
+
+    await c.query(`DELETE FROM discounts`);
+    await c.query(`DELETE FROM invoice_items`);
+    await c.query(`ALTER TABLE invoices DISABLE TRIGGER trg_invoices_no_delete`);
+    await c.query(`DELETE FROM invoices`);
+    await c.query(`ALTER TABLE invoices ENABLE TRIGGER trg_invoices_no_delete`);
+
+    await c.query(`DELETE FROM child_packages`);
+    await c.query(`DELETE FROM packages`);
+    await c.query(`DELETE FROM services`);
+
     // Faz 3.8: data_shares/consents klinik fiziki-DELETE trigger-ləri YALNIZ
     // test cleanup üçün müvəqqəti deaktiv edilir.
     await c.query(`ALTER TABLE data_shares DISABLE TRIGGER trg_data_shares_no_delete`);
