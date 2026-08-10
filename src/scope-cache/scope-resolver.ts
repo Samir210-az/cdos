@@ -64,7 +64,19 @@ export async function resolveMemberScope(
   return scope;
 }
 
-/** Rol/filial dəyişikliyi zamanı DƏRHAL çağırılmalıdır (event-driven invalidation). */
+/** Faz 3.15: HTTP auth guard üçün — user_id + organization_id-dən member_id tapır. */
+export async function resolveMemberIdForUser(organizationId: string, userId: string): Promise<string> {
+  return withTenantTransaction(organizationId, async (client) => {
+    const res = await client.query(
+      `SELECT id FROM organization_members WHERE organization_id=$1 AND user_id=$2 AND status='ACTIVE'`,
+      [organizationId, userId],
+    );
+    if (res.rowCount === 0) {
+      throw new Error('Bu organization üçün aktiv membership tapılmadı.');
+    }
+    return res.rows[0].id;
+  });
+}
 export async function invalidateMemberScope(memberId: string): Promise<void> {
   await getScopeCache().invalidate(memberId);
 }
