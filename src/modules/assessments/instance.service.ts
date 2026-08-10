@@ -1,6 +1,7 @@
 import { withTenantTransaction } from '../../common/db/tenant-context';
 import { evaluateSubscaleRule } from './scoring-interpreter';
 import { ScoringRule } from './scoring-dsl.types';
+import { insertAuditRow } from '../audit/audit.service';
 
 export class InstanceError extends Error {
   constructor(
@@ -14,6 +15,7 @@ export class InstanceError extends Error {
 interface ActorContext {
   organizationId: string;
   memberId: string;
+  userId?: string; // Faz 3.13 audit retrofit: audit_logs.actor_user_id üçün (opsional, geriyə uyğun)
 }
 
 /** Yeni assessment cəhdi yalnız PUBLISHED template version üzərində yaradıla bilər. */
@@ -36,7 +38,20 @@ export async function createInstance(
        VALUES ($1,$2,$3,$4,'IN_PROGRESS') RETURNING id`,
       [actor.organizationId, input.childId, input.templateVersionId, input.assessorSpecialistId],
     );
-    return { id: res.rows[0].id };
+    const instanceId = res.rows[0].id;
+
+    // Faz 3.13 retrofit: ASSESSMENT_CREATED (frozen action), eyni transaction daxilində (atomik)
+    await insertAuditRow(client, {
+      organizationId: actor.organizationId,
+      actorUserId: actor.userId ?? null,
+      action: 'ASSESSMENT_CREATED',
+      targetType: 'assessment_instances',
+      targetId: instanceId,
+      after: { childId: input.childId, templateVersionId: input.templateVersionId, status: 'IN_PROGRESS' },
+      result: 'SUCCESS',
+    });
+
+    return { id: instanceId };
   });
 }
 
@@ -111,6 +126,18 @@ export async function lockInstanceAndCalculate(
        WHERE id=$1 AND organization_id=$2`,
       [instanceId, actor.organizationId],
     );
+
+    // Faz 3.13 retrofit: ASSESSMENT_LOCKED (frozen action), eyni transaction daxilində
+    await insertAuditRow(client, {
+      organizationId: actor.organizationId,
+      actorUserId: actor.userId ?? null,
+      action: 'ASSESSMENT_LOCKED',
+      targetType: 'assessment_instances',
+      targetId: instanceId,
+      before: { status: 'IN_PROGRESS' },
+      after: { status: 'LOCKED', resultsCount: results.length },
+      result: 'SUCCESS',
+    });
 
     return { results };
   });

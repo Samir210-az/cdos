@@ -50,6 +50,7 @@ export async function login(
   | { requiresOrgSelection: false; tokens: TokenPair }
 > {
   const pool = getAppPool();
+  const { recordAuditEvent } = await import('../audit/audit.service');
 
   // users cədvəlində RLS yoxdur (platform-level identity) — tenant context lazım deyil.
   const userRes = await pool.query(
@@ -57,15 +58,18 @@ export async function login(
     [email],
   );
   if (userRes.rowCount === 0) {
+    await recordAuditEvent({ organizationId: null, action: 'LOGIN_FAILED', result: 'DENIED' }).catch(() => {});
     throw new AuthError('INVALID_CREDENTIALS', 'Email və ya şifrə yanlışdır.');
   }
   const user = userRes.rows[0];
   if (user.status !== 'ACTIVE') {
+    await recordAuditEvent({ organizationId: null, actorUserId: user.id, action: 'LOGIN_FAILED', result: 'DENIED' }).catch(() => {});
     throw new AuthError('USER_SUSPENDED', 'Hesab aktiv deyil.');
   }
 
   const ok = await bcrypt.compare(password, user.password_hash);
   if (!ok) {
+    await recordAuditEvent({ organizationId: null, actorUserId: user.id, action: 'LOGIN_FAILED', result: 'DENIED' }).catch(() => {});
     throw new AuthError('INVALID_CREDENTIALS', 'Email və ya şifrə yanlışdır.');
   }
 
@@ -76,6 +80,7 @@ export async function login(
 
   const membershipCount = membershipsRes.rowCount ?? 0;
   if (membershipCount === 0) {
+    await recordAuditEvent({ organizationId: null, actorUserId: user.id, action: 'LOGIN_FAILED', result: 'DENIED' }).catch(() => {});
     throw new AuthError('NO_ACTIVE_MEMBERSHIP', 'İstifadəçinin aktiv mərkəz üzvlüyü yoxdur.');
   }
 
@@ -92,6 +97,14 @@ export async function login(
   const choice = membershipsRes.rows[0];
   const tokens = await issueTokenPair(user.id, choice.organization_id);
   await pool.query(`UPDATE users SET last_login_at = now() WHERE id = $1`, [user.id]);
+  // Faz 3.13 retrofit: LOGIN (frozen action) — best-effort, ayrıca transaction
+  // (login axını hələ vahid tenant transaction-a bağlı deyil).
+  await recordAuditEvent({
+    organizationId: choice.organization_id,
+    actorUserId: user.id,
+    action: 'LOGIN',
+    result: 'SUCCESS',
+  }).catch(() => {});
   return { requiresOrgSelection: false, tokens };
 }
 
@@ -101,14 +114,18 @@ export async function completeLoginWithOrgChoice(
   organizationId: string,
 ): Promise<TokenPair> {
   const pool = getAppPool();
+  const { recordAuditEvent } = await import('../audit/audit.service');
   const check = await pool.query(
     `SELECT status FROM find_user_org_memberships($1) WHERE organization_id = $2`,
     [userId, organizationId],
   );
   if (check.rowCount === 0 || check.rows[0].status !== 'ACTIVE') {
+    await recordAuditEvent({ organizationId, actorUserId: userId, action: 'LOGIN_FAILED', result: 'DENIED' }).catch(() => {});
     throw new AuthError('ACCESS_DENIED', 'Bu organization üçün aktiv üzvlük yoxdur.');
   }
-  return issueTokenPair(userId, organizationId);
+  const tokens = await issueTokenPair(userId, organizationId);
+  await recordAuditEvent({ organizationId, actorUserId: userId, action: 'LOGIN', result: 'SUCCESS' }).catch(() => {});
+  return tokens;
 }
 
 async function issueTokenPair(userId: string, organizationId: string): Promise<TokenPair> {
@@ -248,9 +265,22 @@ export async function switchOrganization(
 /** LOGOUT — sessiyanı dərhal ləğv edir. */
 export async function logout(sessionId: string): Promise<void> {
   const pool = getAppPool();
+  const sessRes = await pool.query(`SELECT user_id FROM sessions_auth WHERE id = $1`, [sessionId]);
   await pool.query(`UPDATE sessions_auth SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL`, [
     sessionId,
   ]);
+  // Faz 3.13 retrofit: LOGOUT (frozen action). QEYD (limitation): "sessions_auth"
+  // organization_id daşımır (bax 008 migration — login/refresh tenant-context-dən
+  // əvvəl işləyir), ona görə organization_id=NULL (RLS WITH CHECK bunu icazə verir).
+  const { recordAuditEvent } = await import('../audit/audit.service');
+  await recordAuditEvent({
+    organizationId: null,
+    actorUserId: sessRes.rows[0]?.user_id ?? null,
+    action: 'LOGOUT',
+    targetType: 'sessions_auth',
+    targetId: sessionId,
+    result: 'SUCCESS',
+  }).catch(() => {});
 }
 
 export { withTenantTransaction };

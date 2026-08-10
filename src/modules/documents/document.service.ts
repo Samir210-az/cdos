@@ -106,6 +106,7 @@ export async function getChildDocuments(actor: ActorContext, childId: string): P
 }
 
 /** Access log-a yazma (VIEW/DOWNLOAD/DENIED). */
+/** Access log-a yazma (VIEW/DOWNLOAD/DENIED) — həm dar əhatəli document_access_logs, həm də (view/download üçün) geniş audit_logs. */
 export async function logDocumentAccess(
   actor: ActorContext,
   input: { documentId: string; action: 'view' | 'download' | 'denied' },
@@ -115,6 +116,22 @@ export async function logDocumentAccess(
       `INSERT INTO document_access_logs (organization_id, document_id, accessed_by, action) VALUES ($1,$2,$3,$4)`,
       [actor.organizationId, input.documentId, actor.userId, input.action],
     );
+
+    // Faz 3.13 retrofit: DOCUMENT_VIEWED/DOCUMENT_DOWNLOADED (frozen action-lar,
+    // dəqiq 23-lükdə mövcuddur) — EYNİ transaction daxilində audit_logs-a da yazılır.
+    // "denied" üçün frozen "DOCUMENT_DENIED" adı YOXDUR — bu hal audit_logs-a
+    // yazılmır (yalnız document_access_logs-da qalır), uydurma edilmədi.
+    if (input.action === 'view' || input.action === 'download') {
+      const { insertAuditRow } = await import('../audit/audit.service');
+      await insertAuditRow(client, {
+        organizationId: actor.organizationId,
+        actorUserId: actor.userId,
+        action: input.action === 'view' ? 'DOCUMENT_VIEWED' : 'DOCUMENT_DOWNLOADED',
+        targetType: 'documents',
+        targetId: input.documentId,
+        result: 'SUCCESS',
+      });
+    }
   });
 }
 

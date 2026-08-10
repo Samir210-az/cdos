@@ -73,7 +73,7 @@ async function transition(
   planId: string,
   fromExpected: string[],
   toStatus: string,
-  opts: { requireApproveRole?: boolean; setApprovedBy?: boolean } = {},
+  opts: { requireApproveRole?: boolean; setApprovedBy?: boolean; auditAction?: string } = {},
 ): Promise<void> {
   if (opts.requireApproveRole) {
     const scope = await resolveMemberScope(actor.organizationId, actor.memberId);
@@ -87,10 +87,11 @@ async function transition(
       actor.organizationId,
     ]);
     if (planRes.rowCount === 0) throw new PlanError('NOT_FOUND', 'Plan tapılmadı.');
-    if (!fromExpected.includes(planRes.rows[0].status)) {
+    const fromStatus = planRes.rows[0].status;
+    if (!fromExpected.includes(fromStatus)) {
       throw new PlanError(
         'CONFLICT',
-        `Plan statusu "${planRes.rows[0].status}" — bu əməliyyat yalnız [${fromExpected.join(',')}] statuslarından mümkündür.`,
+        `Plan statusu "${fromStatus}" — bu əməliyyat yalnız [${fromExpected.join(',')}] statuslarından mümkündür.`,
       );
     }
     if (opts.setApprovedBy) {
@@ -104,14 +105,38 @@ async function transition(
         [toStatus, planId, actor.organizationId],
       );
     }
+
+    // Faz 3.13 retrofit: yalnız frozen action verilmişsə (məs. "PLAN_APPROVED"),
+    // eyni transaction daxilində (atomik). Digər keçidlər (review/pause/resume/
+    // complete/archive) üçün frozen event YOXDUR — audit yazılmır (DEFERRED).
+    if (opts.auditAction) {
+      const { insertAuditRow } = await import('../audit/audit.service');
+      await insertAuditRow(client, {
+        organizationId: actor.organizationId,
+        actorUserId: actor.userId,
+        action: opts.auditAction as any,
+        targetType: 'development_plans',
+        targetId: planId,
+        before: { status: fromStatus },
+        after: { status: toStatus },
+        result: 'SUCCESS',
+      });
+    }
   });
 }
 
 export const reviewPlan = (actor: ActorContext, planId: string) =>
   transition(actor, planId, ['AI_DRAFT'], 'REVIEWED', { requireApproveRole: true, setApprovedBy: true });
 
+/**
+ * QEYD (Faz 3.13 Phase 2, event mapping əsaslandırması): Faz 3.5-dəki 6-statuslu
+ * model REVIEWED→ACTIVE keçidini "planın rəsmən qüvvəyə minməsi" kimi təyin edir
+ * — bu, frozen "PLAN_APPROVED" hadisəsinin funksional qarşılığıdır (orijinal
+ * 7-statuslu modeldə ayrıca "APPROVED" statusu var idi, hazırkı sxemdə yoxdur).
+ * Yeni event adı UYDURULMAYIB — mövcud 23-lükdən İSTİFADƏ OLUNUB.
+ */
 export const activatePlan = (actor: ActorContext, planId: string) =>
-  transition(actor, planId, ['REVIEWED'], 'ACTIVE', { requireApproveRole: true });
+  transition(actor, planId, ['REVIEWED'], 'ACTIVE', { requireApproveRole: true, auditAction: 'PLAN_APPROVED' });
 
 export const pausePlan = (actor: ActorContext, planId: string) => transition(actor, planId, ['ACTIVE'], 'PAUSED');
 

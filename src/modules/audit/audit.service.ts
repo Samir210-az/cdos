@@ -66,9 +66,43 @@ export interface AuditEventInput {
 }
 
 /**
- * Audit qeydi yaradır. "organization_id" NULL ola bilər (yalnız tenant-context-dən
- * əvvəlki hadisələr) — digər hallarda mütləq təyin edilməlidir (RLS WITH CHECK
- * bunu təmin edir, bax 034 migration).
+ * Faz 3.13 Phase 3: mövcud "client" (artıq açıq transaction daxilində,
+ * withTenantTransaction() callback-i tərəfindən verilir) ilə audit sətri
+ * yazır. Bu, biznes mutasiyası ilə audit event-inin EYNİ transaction daxilində
+ * (atomik) olmasını təmin edir — ayrıca connection açmır.
+ */
+export async function insertAuditRow(
+  client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }> },
+  input: AuditEventInput,
+): Promise<{ id: string }> {
+  const res = await client.query(
+    `INSERT INTO audit_logs
+       (organization_id, actor_user_id, action, target_type, target_id, before, after,
+        ip_address, user_agent, request_id, result)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+    [
+      input.organizationId,
+      input.actorUserId ?? null,
+      input.action,
+      input.targetType ?? null,
+      input.targetId ?? null,
+      input.before !== undefined ? JSON.stringify(sanitize(input.before)) : null,
+      input.after !== undefined ? JSON.stringify(sanitize(input.after)) : null,
+      input.ipAddress ?? null,
+      input.userAgent ?? null,
+      input.requestId ?? null,
+      input.result,
+    ],
+  );
+  return { id: res.rows[0].id };
+}
+
+/**
+ * Audit qeydi yaradır (MÜSTƏQİL connection/transaction ilə). "organization_id"
+ * NULL ola bilər (yalnız tenant-context-dən əvvəlki hadisələr) — digər
+ * hallarda mütləq təyin edilməlidir (RLS WITH CHECK bunu təmin edir, bax 034
+ * migration). Mövcud transaction daxilində olan çağırışlar üçün ƏVƏZİNƏ
+ * "insertAuditRow(client, ...)" istifadə edin (atomiklik üçün).
  */
 export async function recordAuditEvent(input: AuditEventInput): Promise<{ id: string }> {
   const pool = getAppPool();
@@ -80,27 +114,9 @@ export async function recordAuditEvent(input: AuditEventInput): Promise<{ id: st
     } else {
       await client.query("SELECT set_config('app.current_org', '', true)");
     }
-    const res = await client.query(
-      `INSERT INTO audit_logs
-         (organization_id, actor_user_id, action, target_type, target_id, before, after,
-          ip_address, user_agent, request_id, result)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-      [
-        input.organizationId,
-        input.actorUserId ?? null,
-        input.action,
-        input.targetType ?? null,
-        input.targetId ?? null,
-        input.before !== undefined ? JSON.stringify(sanitize(input.before)) : null,
-        input.after !== undefined ? JSON.stringify(sanitize(input.after)) : null,
-        input.ipAddress ?? null,
-        input.userAgent ?? null,
-        input.requestId ?? null,
-        input.result,
-      ],
-    );
+    const result = await insertAuditRow(client, input);
     await client.query('COMMIT');
-    return { id: res.rows[0].id };
+    return result;
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;

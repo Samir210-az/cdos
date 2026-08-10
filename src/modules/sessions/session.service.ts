@@ -108,6 +108,21 @@ export async function lockSession(actor: ActorContext, sessionId: string): Promi
     throw new SessionError('ACCESS_DENIED', 'Session LOCK əməliyyatı üçün APPROVE-səviyyəli rol tələb olunur.');
   }
   await transition(actor, sessionId, 'COMPLETED', 'LOCKED', ', locked_at = now()');
+
+  // Faz 3.13 retrofit: SESSION_LOCKED (frozen action). QEYD (limitation, Phase 3):
+  // "transition()" bir neçə fərqli keçid üçün paylaşılan generic helper-dir və
+  // öz client-ini xaricə vermir — ona görə audit yazısı AYRICA (best-effort)
+  // transaction ilə edilir, əsas mutasiya ilə tam atomik DEYİL. Bu, sənədləşdirilmiş
+  // məhdudiyyətdir (transition()-un zorla refactor edilməsindən çəkinildi).
+  const { recordAuditEvent } = await import('../audit/audit.service');
+  await recordAuditEvent({
+    organizationId: actor.organizationId,
+    action: 'SESSION_LOCKED',
+    targetType: 'sessions',
+    targetId: sessionId,
+    after: { status: 'LOCKED' },
+    result: 'SUCCESS',
+  }).catch(() => {});
 }
 
 /**
@@ -130,7 +145,23 @@ export async function lockExpiredSessions(
        RETURNING id`,
       [organizationId, lockHours],
     );
-    return { lockedCount: res.rowCount ?? 0, lockedIds: res.rows.map((r: any) => r.id) };
+    const lockedIds = res.rows.map((r: any) => r.id);
+
+    // Faz 3.13 retrofit: hər avtomatik-lock olunan session üçün SESSION_LOCKED,
+    // EYNİ transaction daxilində (atomik).
+    const { insertAuditRow } = await import('../audit/audit.service');
+    for (const sessionId of lockedIds) {
+      await insertAuditRow(client, {
+        organizationId,
+        action: 'SESSION_LOCKED',
+        targetType: 'sessions',
+        targetId: sessionId,
+        after: { status: 'LOCKED', reason: 'auto-lock' },
+        result: 'SUCCESS',
+      });
+    }
+
+    return { lockedCount: res.rowCount ?? 0, lockedIds };
   });
 }
 
@@ -168,6 +199,20 @@ export async function amendSession(
         input.reason,
       ],
     );
+
+    // Faz 3.13 retrofit: SESSION_AMENDED (frozen action), eyni transaction daxilində (atomik)
+    const { insertAuditRow } = await import('../audit/audit.service');
+    await insertAuditRow(client, {
+      organizationId: actor.organizationId,
+      actorUserId: actor.userId,
+      action: 'SESSION_AMENDED',
+      targetType: 'sessions',
+      targetId: input.sessionId,
+      before: sessRes.rows[0],
+      after: input.newData,
+      result: 'SUCCESS',
+    });
+
     return { id: res.rows[0].id };
   });
 }

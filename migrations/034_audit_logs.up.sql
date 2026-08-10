@@ -61,8 +61,17 @@ CREATE INDEX idx_audit_logs_actor ON audit_logs(actor_user_id);
 
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs FORCE ROW LEVEL SECURITY;
+-- QEYD (bug düzəlişi, Faz 3.13-də tapıldı): "USING" və "WITH CHECK" SİMMETRİK
+-- olmalıdır. Səbəb: "INSERT ... RETURNING" statement-i INSERT olunan sətri
+-- geri qaytarmazdan əvvəl "USING" klazulu ilə görünürlük yoxlaması aparır —
+-- əgər USING NULL-org halını əhatə etməsə, "WITH CHECK" uğurlu olsa belə
+-- "RETURNING" mərhələsində RLS pozuntusu xətası yaranır. NULL-org sətirlər
+-- (yalnız tenant-context-dən əvvəlki hadisələr) hər hansı konkret tenant-a
+-- aid olmadığı üçün onların "qlobal" oxuna bilməsi təhlükəsizlik baxımından
+-- neytraldır (heç bir tenant-a məxsus məlumat ifşa olunmur).
 CREATE POLICY tenant_isolation_audit_logs ON audit_logs
-  USING       (organization_id = NULLIF(current_setting('app.current_org', true), '')::uuid)
+  USING       (organization_id = NULLIF(current_setting('app.current_org', true), '')::uuid
+               OR organization_id IS NULL)
   WITH CHECK  (organization_id = NULLIF(current_setting('app.current_org', true), '')::uuid
                OR organization_id IS NULL);
 

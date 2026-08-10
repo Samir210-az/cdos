@@ -71,6 +71,24 @@ export async function approveConsent(actor: ParentActor, consentId: string): Pro
       `UPDATE consents SET status='ACTIVE', activated_at=now(), updated_at=now() WHERE id=$1 AND organization_id=$2`,
       [consentId, actor.organizationId],
     );
+
+    // Faz 3.13 retrofit: CONSENT_GRANTED (frozen action), eyni transaction daxilində (atomik).
+    // actor_user_id üçün parents.user_id axtarılır (ParentActor yalnız parentId daşıyır).
+    const { insertAuditRow } = await import('../audit/audit.service');
+    const parentUserRes = await client.query(`SELECT user_id FROM parents WHERE id=$1 AND organization_id=$2`, [
+      actor.parentId,
+      actor.organizationId,
+    ]);
+    await insertAuditRow(client, {
+      organizationId: actor.organizationId,
+      actorUserId: parentUserRes.rows[0]?.user_id ?? null,
+      targetType: 'consents',
+      targetId: consentId,
+      action: 'CONSENT_GRANTED',
+      before: { status: 'PENDING' },
+      after: { status: 'ACTIVE' },
+      result: 'SUCCESS',
+    });
   });
 }
 
@@ -97,6 +115,23 @@ export async function revokeConsent(actor: ParentActor, consentId: string): Prom
       `UPDATE consents SET status='REVOKED', revoked_at=now(), updated_at=now() WHERE id=$1 AND organization_id=$2`,
       [consentId, actor.organizationId],
     );
+
+    // Faz 3.13 retrofit: CONSENT_REVOKED (frozen action), eyni transaction daxilində (atomik)
+    const { insertAuditRow } = await import('../audit/audit.service');
+    const parentUserRes = await client.query(`SELECT user_id FROM parents WHERE id=$1 AND organization_id=$2`, [
+      actor.parentId,
+      actor.organizationId,
+    ]);
+    await insertAuditRow(client, {
+      organizationId: actor.organizationId,
+      actorUserId: parentUserRes.rows[0]?.user_id ?? null,
+      targetType: 'consents',
+      targetId: consentId,
+      action: 'CONSENT_REVOKED',
+      before: { status: 'ACTIVE' },
+      after: { status: 'REVOKED' },
+      result: 'SUCCESS',
+    });
   });
 }
 
