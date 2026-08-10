@@ -12,14 +12,16 @@ import { ConsentsController } from './modules/consents/http/consents.controller'
 import { FinanceController } from './modules/finance/http/finance.controller';
 import { PlatformBillingController } from './modules/platform-billing/http/platform-billing.controller';
 import { AIController } from './modules/ai/http/ai.controller';
+import { ChildrenController } from './modules/children/http/children.controller';
+import { ParentsController } from './modules/children/http/parents.controller';
+import { ChildGuardiansController } from './modules/children/http/child-guardians.controller';
+import { EmergencyContactsController } from './modules/children/http/emergency-contacts.controller';
+import { ClinicalProfilesController } from './modules/children/http/clinical-profiles.controller';
 
 /**
  * Faz 3.15: mövcud service-layer üzərində HTTP application layer.
- * QEYD (IMPLEMENTATION GAP): "children"/"parents" üçün ayrıca service-layer
- * heç vaxt yaradılmayıb (bütün əvvəlki fazlarda birbaşa SQL/migrator
- * istifadə olunub) — ona görə ChildrenController/ParentsController BURADA
- * YARADILMIR (uydurma service üzərində controller yazmaq əvəzinə, açıq
- * IMPLEMENTATION GAP kimi FINAL REPORT-da qeyd olunur).
+ * Faz 3.16: Children/Parents/Guardians/EmergencyContacts/ClinicalProfiles
+ * domeni əlavə olundu (əvvəlki IMPLEMENTATION GAP bağlandı).
  */
 @Module({
   controllers: [
@@ -34,6 +36,11 @@ import { AIController } from './modules/ai/http/ai.controller';
     FinanceController,
     PlatformBillingController,
     AIController,
+    ChildrenController,
+    ParentsController,
+    ChildGuardiansController,
+    EmergencyContactsController,
+    ClinicalProfilesController,
   ],
   providers: [{ provide: APP_FILTER, useClass: DomainExceptionFilter }],
 })
