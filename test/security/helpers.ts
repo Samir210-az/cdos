@@ -228,6 +228,21 @@ export async function seedFixtures(): Promise<Fixtures> {
 export async function cleanupFixtures(): Promise<void> {
   const c = await migratorClient();
   try {
+    // Faz 3.5: development_plans/goals/goal_measurements klinik fiziki-DELETE
+    // trigger-ləri (Faz 3.1 qaydası) YALNIZ test cleanup üçün müvəqqəti deaktiv
+    // edilir — eyni pattern, Faz 3.4-dəki assessment trigger idarəçiliyi ilə.
+    await c.query(`ALTER TABLE goal_measurements DISABLE TRIGGER trg_measurements_no_delete`);
+    await c.query(`DELETE FROM goal_measurements`);
+    await c.query(`ALTER TABLE goal_measurements ENABLE TRIGGER trg_measurements_no_delete`);
+
+    await c.query(`ALTER TABLE goals DISABLE TRIGGER trg_goals_no_delete`);
+    await c.query(`DELETE FROM goals`);
+    await c.query(`ALTER TABLE goals ENABLE TRIGGER trg_goals_no_delete`);
+
+    await c.query(`ALTER TABLE development_plans DISABLE TRIGGER trg_plans_no_delete`);
+    await c.query(`DELETE FROM development_plans`);
+    await c.query(`ALTER TABLE development_plans ENABLE TRIGGER trg_plans_no_delete`);
+
     // LOCKED instance-ların answers/results-u DB trigger ilə qorunur (bu, düzgün
     // təhlükəsizlik davranışıdır) — test cleanup üçün YALNIZ migrator sessiyasında,
     // müvəqqəti olaraq trigger-lər deaktiv edilir (production-da bu heç vaxt edilmir).
