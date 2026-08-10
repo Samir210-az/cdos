@@ -228,6 +228,16 @@ export async function seedFixtures(): Promise<Fixtures> {
 export async function cleanupFixtures(): Promise<void> {
   const c = await migratorClient();
   try {
+    // Faz 3.6: sessions/session_amendments/session_goals klinik fiziki-DELETE
+    // trigger-ləri YALNIZ test cleanup üçün müvəqqəti deaktiv edilir.
+    await c.query(`DELETE FROM session_goals`);
+    await c.query(`ALTER TABLE session_amendments DISABLE TRIGGER trg_amendments_no_delete`);
+    await c.query(`DELETE FROM session_amendments`);
+    await c.query(`ALTER TABLE session_amendments ENABLE TRIGGER trg_amendments_no_delete`);
+    await c.query(`ALTER TABLE sessions DISABLE TRIGGER trg_sessions_no_delete`);
+    await c.query(`DELETE FROM sessions`);
+    await c.query(`ALTER TABLE sessions ENABLE TRIGGER trg_sessions_no_delete`);
+
     // Faz 3.5: development_plans/goals/goal_measurements klinik fiziki-DELETE
     // trigger-ləri (Faz 3.1 qaydası) YALNIZ test cleanup üçün müvəqqəti deaktiv
     // edilir — eyni pattern, Faz 3.4-dəki assessment trigger idarəçiliyi ilə.
