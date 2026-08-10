@@ -324,18 +324,32 @@ describe('CDOS Faz 3.7 — Reports + Documents Engine Security Tests', () => {
     expect(rows.length).toBe(0);
   });
 
-  test('R20: Parent A → öz uşağının paylaşılmış (parent_visible) sənədi = ALLOWED', async () => {
+  test('R20 (Faz 3.8-ə uyğunlaşdırıldı): Parent A → öz uşağının consent+data_share ilə paylaşılmış sənədi = ALLOWED', async () => {
+    // "parent_visible" ARTIQ authorization mənbəyi deyil (Faz 3.8 bənd 18) —
+    // real consent + entity-level data_share yaradılır.
+    const { createConsentRequest, approveConsent } = await import('../../src/modules/consents/consent.service');
+    const { shareEntity } = await import('../../src/modules/consents/data-share.service');
+
+    const consent = await createConsentRequest(fx.orgA, {
+      childId: fx.childA1,
+      grantedByParentId: fx.parentA1,
+      toOrganizationId: fx.orgA, // "özünə-consent" — in-org parent visibility (bax 027 migration QEYD 3)
+      dataScope: ['documents'],
+    });
+    await approveConsent({ organizationId: fx.orgA, parentId: fx.parentA1 }, consent.id);
+    await shareEntity(fx.orgA, { consentId: consent.id, entityType: 'documents', entityId: documentA });
+
     const docs = await getParentVisibleDocuments(fx.orgA, fx.parentA1, fx.childA1);
     expect(docs.some((d: any) => d.id === documentA)).toBe(true);
   });
 
-  test('R21: Parent A → paylaşılmamış sənəd = DENIED', async () => {
+  test('R21 (Faz 3.8-ə uyğunlaşdırıldı): Parent A → paylaşılmamış (data_share yoxdur) sənəd = DENIED', async () => {
     const nonShared = await uploadDocument(specialist(), {
       childId: fx.childA1,
       storageKey: 's3://bucket/private.pdf',
       assessorSpecialistId: fx.specialistA1,
-      parentVisible: false,
     });
+    // ACTIVE consent mövcuddur (R20-dan), amma BU sənəd üçün data_share YOXDUR
     const docs = await getParentVisibleDocuments(fx.orgA, fx.parentA1, fx.childA1);
     expect(docs.some((d: any) => d.id === nonShared.id)).toBe(false);
   });

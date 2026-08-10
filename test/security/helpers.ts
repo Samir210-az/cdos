@@ -228,6 +228,15 @@ export async function seedFixtures(): Promise<Fixtures> {
 export async function cleanupFixtures(): Promise<void> {
   const c = await migratorClient();
   try {
+    // Faz 3.8: data_shares/consents klinik fiziki-DELETE trigger-ləri YALNIZ
+    // test cleanup üçün müvəqqəti deaktiv edilir.
+    await c.query(`ALTER TABLE data_shares DISABLE TRIGGER trg_data_shares_no_delete`);
+    await c.query(`DELETE FROM data_shares`);
+    await c.query(`ALTER TABLE data_shares ENABLE TRIGGER trg_data_shares_no_delete`);
+    await c.query(`ALTER TABLE consents DISABLE TRIGGER trg_consents_no_delete`);
+    await c.query(`DELETE FROM consents`);
+    await c.query(`ALTER TABLE consents ENABLE TRIGGER trg_consents_no_delete`);
+
     // Faz 3.7: documents/document_access_logs/reports klinik fiziki-DELETE
     // trigger-ləri YALNIZ test cleanup üçün müvəqqəti deaktiv edilir.
     await c.query(`ALTER TABLE document_access_logs DISABLE TRIGGER trg_doc_access_logs_no_delete`);

@@ -54,8 +54,9 @@ export async function uploadDocument(
     if (isSpecialist && input.assessorSpecialistId) {
       await assertActiveAssignment(client, actor.organizationId, input.assessorSpecialistId, input.childId);
     }
-    // QEYD (bax 025 migration): tam data_shares/consent mexanizmi hələ yoxdur.
-    // Keçici konvensiya: access_policy.parent_visible (bənd 13-ün müvəqqəti tətbiqi).
+    // QEYD (Faz 3.8 bənd 18): access_policy.parent_visible ARTIQ authorization
+    // üçün İSTİFADƏ OLUNMUR — yalnız informativ metadata kimi saxlanılır.
+    // Real valideyn girişi consent+data_share ilə həll olunur (bax consent.service.ts).
     const accessPolicy = { parent_visible: Boolean(input.parentVisible) };
 
     const res = await client.query(
@@ -118,9 +119,10 @@ export async function logDocumentAccess(
 }
 
 /**
- * Parent üçün sənəd görünürlüyü — Faz 3.7 bənd 13/20-21 tələbi, keçici mexanizm
- * (bax 025 migration qeydi): yalnız access_policy.parent_visible=true olan
- * VƏ uşağın öz sənədləri qaytarılır.
+ * Parent üçün sənəd görünürlüyü — Faz 3.8 bənd 18: FINAL mexanizm.
+ * "access_policy.parent_visible" ARTIQ authorization source of truth DEYİL
+ * (yalnız Faz 3.7-dəki köhnə sətirlərdə metadata kimi qala bilər, oxunmur).
+ * Access YALNIZ canlı consent (ACTIVE) + entity-level data_share ilə verilir.
  */
 export async function getParentVisibleDocuments(
   organizationId: string,
@@ -134,10 +136,14 @@ export async function getParentVisibleDocuments(
     );
     if (guardianCheck.rowCount === 0) return [];
 
+    // FINAL: yalnız ACTIVE consent + data_shares ilə konkret paylaşılan sənədlər.
     const res = await client.query(
-      `SELECT * FROM documents
-       WHERE organization_id=$1 AND child_id=$2 AND status='active'
-         AND access_policy->>'parent_visible' = 'true'`,
+      `SELECT d.* FROM documents d
+       JOIN data_shares ds ON ds.entity_type = 'documents' AND ds.entity_id = d.id AND ds.organization_id = d.organization_id
+       JOIN consents c ON c.id = ds.consent_id AND c.organization_id = ds.organization_id
+       WHERE d.organization_id = $1 AND d.child_id = $2 AND d.status = 'active'
+         AND c.status = 'ACTIVE' AND c.to_organization_id = $1
+         AND (c.end_date IS NULL OR c.end_date >= CURRENT_DATE)`,
       [organizationId, childId],
     );
     return res.rows;
