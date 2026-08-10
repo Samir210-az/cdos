@@ -162,18 +162,21 @@ export async function refresh(
       `UPDATE sessions_auth SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`,
       [session.user_id],
     );
-    // TOKEN_REUSE audit hadisəsi — Faz 3.1 audit modelinə uyğun, audit_logs
-    // cədvəli hələ (011+) yaradılmayıb, ona görə buradaca strukturlu qeyd
-    // buraxılır (TODO işarəli, audit modulu gələndə həqiqi INSERT-ə çevriləcək).
-    // eslint-disable-next-line no-console
-    console.warn(
-      JSON.stringify({
-        event: 'TOKEN_REUSE',
-        userId: session.user_id,
-        sessionId: session.id,
-        timestamp: new Date().toISOString(),
-      }),
-    );
+    // TOKEN_REUSE audit hadisəsi — Faz 3.12-dən bəri REAL audit_logs sətri
+    // yazılır (əvvəllər console.warn idi, indi Faz 3.1 audit modelinə uyğun
+    // həqiqi INSERT-dir).
+    const { recordAuditEvent } = await import('../audit/audit.service');
+    await recordAuditEvent({
+      organizationId: activeOrganizationId,
+      actorUserId: session.user_id,
+      action: 'TOKEN_REUSE',
+      targetType: 'sessions_auth',
+      targetId: session.id,
+      result: 'DENIED',
+    }).catch(() => {
+      // Audit yazısının uğursuz olması əsas təhlükəsizlik əməliyyatını (bütün
+      // sessiyaların ləğvi artıq YUXARIDA baş verib) bloklamamalıdır.
+    });
     throw new AuthError('TOKEN_REUSE_DETECTED', 'Refresh token təkrar istifadə aşkarlandı — bütün sessiyalar ləğv edildi.');
   }
 

@@ -228,6 +228,11 @@ export async function seedFixtures(): Promise<Fixtures> {
 export async function cleanupFixtures(): Promise<void> {
   const c = await migratorClient();
   try {
+    // Faz 3.12: audit_logs append-only-dur (REVOKE UPDATE/DELETE cdos_app-dan,
+    // amma cdos_migrator table OWNER-i olduğu üçün DELETE edə bilir — owner
+    // GRANT sistemindən müstəsnadır). Test cleanup üçün sadə DELETE kifayətdir.
+    await c.query(`DELETE FROM audit_logs`);
+
     // Faz 3.10: platform_billing tenant RLS-ə tabe DEYİL, amma test fixture-larını
     // (Faz 3.9-dan qalan orgA/orgB) təmizləməzdən əvvəl bu cədvəllərdəki əlaqəli
     // sətirlər silinməlidir (FK RESTRICT — orgA/orgB organizations sətirlərinə bağlıdır).
