@@ -228,6 +228,27 @@ export async function seedFixtures(): Promise<Fixtures> {
 export async function cleanupFixtures(): Promise<void> {
   const c = await migratorClient();
   try {
+    // LOCKED instance-ların answers/results-u DB trigger ilə qorunur (bu, düzgün
+    // təhlükəsizlik davranışıdır) — test cleanup üçün YALNIZ migrator sessiyasında,
+    // müvəqqəti olaraq trigger-lər deaktiv edilir (production-da bu heç vaxt edilmir).
+    await c.query(`ALTER TABLE assessment_results DISABLE TRIGGER trg_results_lock_guard`);
+    await c.query(`DELETE FROM assessment_results`);
+    await c.query(`ALTER TABLE assessment_results ENABLE TRIGGER trg_results_lock_guard`);
+    await c.query(`ALTER TABLE assessment_answers DISABLE TRIGGER trg_answers_lock_guard`);
+    await c.query(`DELETE FROM assessment_answers`);
+    await c.query(`ALTER TABLE assessment_answers ENABLE TRIGGER trg_answers_lock_guard`);
+    await c.query(`DELETE FROM assessment_instances`);
+    await c.query(`ALTER TABLE assessment_items DISABLE TRIGGER trg_items_publish_guard`);
+    await c.query(`DELETE FROM assessment_items`);
+    await c.query(`ALTER TABLE assessment_items ENABLE TRIGGER trg_items_publish_guard`);
+    await c.query(`ALTER TABLE assessment_sections DISABLE TRIGGER trg_sections_publish_guard`);
+    await c.query(`DELETE FROM assessment_sections`);
+    await c.query(`ALTER TABLE assessment_sections ENABLE TRIGGER trg_sections_publish_guard`);
+    await c.query(`ALTER TABLE assessment_subscales DISABLE TRIGGER trg_subscales_publish_guard`);
+    await c.query(`DELETE FROM assessment_subscales`);
+    await c.query(`ALTER TABLE assessment_subscales ENABLE TRIGGER trg_subscales_publish_guard`);
+    await c.query(`DELETE FROM assessment_template_versions`);
+    await c.query(`DELETE FROM assessment_templates`);
     await c.query(`DELETE FROM medical_background`);
     await c.query(`DELETE FROM developmental_history`);
     await c.query(`DELETE FROM communication_profile`);
