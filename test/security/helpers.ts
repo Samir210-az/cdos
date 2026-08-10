@@ -228,6 +228,18 @@ export async function seedFixtures(): Promise<Fixtures> {
 export async function cleanupFixtures(): Promise<void> {
   const c = await migratorClient();
   try {
+    // Faz 3.10: platform_billing tenant RLS-ə tabe DEYİL, amma test fixture-larını
+    // (Faz 3.9-dan qalan orgA/orgB) təmizləməzdən əvvəl bu cədvəllərdəki əlaqəli
+    // sətirlər silinməlidir (FK RESTRICT — orgA/orgB organizations sətirlərinə bağlıdır).
+    await c.query(`ALTER TABLE platform_billing.subscription_payments DISABLE TRIGGER trg_sub_payments_no_delete`);
+    await c.query(`DELETE FROM platform_billing.subscription_payments`);
+    await c.query(`ALTER TABLE platform_billing.subscription_payments ENABLE TRIGGER trg_sub_payments_no_delete`);
+    await c.query(`ALTER TABLE platform_billing.subscription_invoices DISABLE TRIGGER trg_sub_invoices_no_delete`);
+    await c.query(`DELETE FROM platform_billing.subscription_invoices`);
+    await c.query(`ALTER TABLE platform_billing.subscription_invoices ENABLE TRIGGER trg_sub_invoices_no_delete`);
+    await c.query(`DELETE FROM platform_billing.organization_subscriptions`);
+    await c.query(`DELETE FROM platform_billing.subscription_plans`);
+
     // Faz 3.9: finance ledger cədvəlləri (fiziki-DELETE/no-update trigger-ləri
     // YALNIZ test cleanup üçün müvəqqəti deaktiv edilir).
     await c.query(`ALTER TABLE child_credits DISABLE TRIGGER trg_child_credits_no_delete`);
