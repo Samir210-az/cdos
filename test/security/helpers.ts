@@ -228,6 +228,15 @@ export async function seedFixtures(): Promise<Fixtures> {
 export async function cleanupFixtures(): Promise<void> {
   const c = await migratorClient();
   try {
+    // Faz 3.14: ai_generation_claims/ai_generations append-only trigger-ləri
+    // YALNIZ test cleanup üçün müvəqqəti deaktiv edilir.
+    await c.query(`ALTER TABLE ai_generation_claims DISABLE TRIGGER trg_ai_claims_no_delete`);
+    await c.query(`DELETE FROM ai_generation_claims`);
+    await c.query(`ALTER TABLE ai_generation_claims ENABLE TRIGGER trg_ai_claims_no_delete`);
+    await c.query(`ALTER TABLE ai_generations DISABLE TRIGGER trg_ai_generations_no_delete`);
+    await c.query(`DELETE FROM ai_generations`);
+    await c.query(`ALTER TABLE ai_generations ENABLE TRIGGER trg_ai_generations_no_delete`);
+
     // Faz 3.12: audit_logs append-only-dur (REVOKE UPDATE/DELETE cdos_app-dan,
     // amma cdos_migrator table OWNER-i olduğu üçün DELETE edə bilir — owner
     // GRANT sistemindən müstəsnadır). Test cleanup üçün sadə DELETE kifayətdir.
