@@ -228,9 +228,30 @@ export async function seedFixtures(): Promise<Fixtures> {
 export async function cleanupFixtures(): Promise<void> {
   const c = await migratorClient();
   try {
-    // Faz 3.6: sessions/session_amendments/session_goals klinik fiziki-DELETE
+    // Faz 3.7: documents/document_access_logs/reports klinik fiziki-DELETE
     // trigger-ləri YALNIZ test cleanup üçün müvəqqəti deaktiv edilir.
+    await c.query(`ALTER TABLE document_access_logs DISABLE TRIGGER trg_doc_access_logs_no_delete`);
+    await c.query(`DELETE FROM document_access_logs`);
+    await c.query(`ALTER TABLE document_access_logs ENABLE TRIGGER trg_doc_access_logs_no_delete`);
+
+    await c.query(`ALTER TABLE documents DISABLE TRIGGER trg_documents_no_delete`);
+    await c.query(`DELETE FROM documents`);
+    await c.query(`ALTER TABLE documents ENABLE TRIGGER trg_documents_no_delete`);
+
+    await c.query(`ALTER TABLE reports DISABLE TRIGGER trg_reports_no_delete`);
+    await c.query(`DELETE FROM reports`);
+    await c.query(`ALTER TABLE reports ENABLE TRIGGER trg_reports_no_delete`);
+
+    // SIRALAMA QEYDİ: goal_measurements (023-cü migrationdan bəri) sessions-a
+    // FK ilə bağlıdır (RESTRICT) — ona görə sessions-dan ƏVVƏL silinməlidir.
+    // session_goals də həm sessions, həm goals-a bağlıdır — hər ikisindən əvvəl.
+    await c.query(`ALTER TABLE goal_measurements DISABLE TRIGGER trg_measurements_no_delete`);
+    await c.query(`DELETE FROM goal_measurements`);
+    await c.query(`ALTER TABLE goal_measurements ENABLE TRIGGER trg_measurements_no_delete`);
     await c.query(`DELETE FROM session_goals`);
+
+    // Faz 3.6: sessions/session_amendments klinik fiziki-DELETE trigger-ləri
+    // YALNIZ test cleanup üçün müvəqqəti deaktiv edilir.
     await c.query(`ALTER TABLE session_amendments DISABLE TRIGGER trg_amendments_no_delete`);
     await c.query(`DELETE FROM session_amendments`);
     await c.query(`ALTER TABLE session_amendments ENABLE TRIGGER trg_amendments_no_delete`);
@@ -238,13 +259,8 @@ export async function cleanupFixtures(): Promise<void> {
     await c.query(`DELETE FROM sessions`);
     await c.query(`ALTER TABLE sessions ENABLE TRIGGER trg_sessions_no_delete`);
 
-    // Faz 3.5: development_plans/goals/goal_measurements klinik fiziki-DELETE
-    // trigger-ləri (Faz 3.1 qaydası) YALNIZ test cleanup üçün müvəqqəti deaktiv
-    // edilir — eyni pattern, Faz 3.4-dəki assessment trigger idarəçiliyi ilə.
-    await c.query(`ALTER TABLE goal_measurements DISABLE TRIGGER trg_measurements_no_delete`);
-    await c.query(`DELETE FROM goal_measurements`);
-    await c.query(`ALTER TABLE goal_measurements ENABLE TRIGGER trg_measurements_no_delete`);
-
+    // Faz 3.5: development_plans/goals klinik fiziki-DELETE trigger-ləri
+    // (Faz 3.1 qaydası) YALNIZ test cleanup üçün müvəqqəti deaktiv edilir.
     await c.query(`ALTER TABLE goals DISABLE TRIGGER trg_goals_no_delete`);
     await c.query(`DELETE FROM goals`);
     await c.query(`ALTER TABLE goals ENABLE TRIGGER trg_goals_no_delete`);
