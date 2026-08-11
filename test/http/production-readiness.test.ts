@@ -124,6 +124,27 @@ describe('CDOS Faz 3.18 — Production Readiness & Operational Hardening', () =>
     expect(res.body.requestId).toBe('err-corr-456');
   });
 
+  test('CORRELATION-4: request-id JwtAuthGuard vasitəsilə ActorContext-ə körpülənib (Faz 3.19 infrastruktur hazırlığı)', async () => {
+    // Servis-layer audit çağırışlarına tam thread-etmə DEFERRED-dir (invaziv
+    // servis-imza dəyişikliyinin qarşısını almaq üçün) — amma actor.requestId
+    // artıq controller səviyyəsində əlçatandır. Birbaşa guard-ı çağıraraq doğrulayırıq.
+    const { JwtAuthGuard } = await import('../../src/common/http/jwt-auth.guard');
+    const { Reflector } = await import('@nestjs/core');
+    const guard = new JwtAuthGuard(new Reflector());
+    const fakeReq: any = {
+      headers: { authorization: `Bearer ${tokenAdmin}` },
+      requestId: 'guard-bridge-test-id',
+    };
+    const ctx: any = {
+      switchToHttp: () => ({ getRequest: () => fakeReq }),
+      getHandler: () => function dummyHandler() {},
+      getClass: () => class DummyClass {},
+    };
+    await guard.canActivate(ctx);
+    expect(fakeReq.actor.requestId).toBe('guard-bridge-test-id');
+    expect(fakeReq.actor.organizationId).toBe(fx.orgA);
+  });
+
   // ================= 7. ERROR RESPONSE STANDARDIZATION =================
 
   test.each([

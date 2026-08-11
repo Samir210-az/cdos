@@ -47,6 +47,14 @@ export class JwtAuthGuard implements CanActivate {
       memberId,
       userId: payload.user_id,
       sessionId: payload.session_id,
+      // Faz 3.19: request_id RequestIdMiddleware tərəfindən artıq req üzərinə
+      // qoyulub (main.ts-də middleware sırası bunu təmin edir) — burada
+      // sadəcə actor context-ə "körpü" salınır ki, controller-lər gələcəkdə
+      // recordAuditEvent(...)-ə requestId ötürə bilsinlər. Bu, mövcud
+      // servis funksiya imzalarını DƏYİŞMİR (invaziv refaktor YOXDUR) —
+      // yalnız infrastruktur hazırlığıdır, tam thread-etmə hələ DEFERRED-dir
+      // (FINAL REPORT-da səbəbi ilə qeyd olunub).
+      requestId: (req as any).requestId,
     };
     return true;
   }

@@ -90,8 +90,73 @@ describe('CDOS Faz 3.2 — Security & Tenant Isolation Tests', () => {
     });
     expect(rows.length).toBe(0);
   });
-  test.skip('TEST 8 Cross-center ACTIVE consent → limited access (DEFERRED: consents/data_shares 011+ scope-undadır)', () => {});
-  test.skip('TEST 9 Cross-center REVOKED consent → DENIED (DEFERRED: eyni səbəb)', () => {});
+  test('TEST 8 Cross-center ACTIVE consent → limited access — İNDİ REAL (Faz 3.19: consent/data_shares Faz 3.8-də tikilib, əvvəlki DEFERRED köhnəlib)', async () => {
+    const { createConsentRequest, approveConsent } = await import('../../src/modules/consents/consent.service');
+    const { shareEntity, hasSharedAccess } = await import('../../src/modules/consents/data-share.service');
+    const { migratorClient: mc } = await import('./helpers');
+
+    const c = await mc();
+    let orgAReportId: string;
+    try {
+      // QEYD: entity həmişə consent-verən (paylaşan) org-a aiddir — orgA (childA1-in evi),
+      // shareEntity(fx.orgA, ...) ilə çağırılır; giriş sonra ALICI (orgB) kontekstindən yoxlanılır.
+      orgAReportId = (
+        await c.query(
+          `INSERT INTO reports (organization_id, child_id, created_by) VALUES ($1,$2,$3) RETURNING id`,
+          [fx.orgA, fx.childA1, fx.centerAdminUserId],
+        )
+      ).rows[0].id;
+    } finally {
+      await c.end();
+    }
+
+    const consent = await createConsentRequest(fx.orgA, {
+      childId: fx.childA1,
+      grantedByParentId: fx.parentA1,
+      toOrganizationId: fx.orgB,
+      dataScope: ['reports'],
+    });
+    await approveConsent({ organizationId: fx.orgA, parentId: fx.parentA1 }, consent.id);
+    await shareEntity(fx.orgA, { consentId: consent.id, entityType: 'reports', entityId: orgAReportId });
+
+    // ACTIVE consent + entity-level share → Org B icazəli görünürlüyə malikdir (limited: yalnız bu report)
+    const access = await hasSharedAccess(fx.orgB, fx.childA1, 'reports', orgAReportId);
+    expect(access).toBe(true);
+  });
+
+  test('TEST 9 Cross-center REVOKED consent → DENIED — İNDİ REAL (eyni səbəbdən aktivləşdirildi)', async () => {
+    const { createConsentRequest, approveConsent, revokeConsent } = await import('../../src/modules/consents/consent.service');
+    const { shareEntity, hasSharedAccess } = await import('../../src/modules/consents/data-share.service');
+    const { migratorClient: mc } = await import('./helpers');
+
+    const c = await mc();
+    let orgAReportId: string;
+    try {
+      orgAReportId = (
+        await c.query(
+          `INSERT INTO reports (organization_id, child_id, created_by) VALUES ($1,$2,$3) RETURNING id`,
+          [fx.orgA, fx.childA1, fx.centerAdminUserId],
+        )
+      ).rows[0].id;
+    } finally {
+      await c.end();
+    }
+
+    const consent = await createConsentRequest(fx.orgA, {
+      childId: fx.childA1,
+      grantedByParentId: fx.parentA1,
+      toOrganizationId: fx.orgB,
+      dataScope: ['reports'],
+    });
+    await approveConsent({ organizationId: fx.orgA, parentId: fx.parentA1 }, consent.id);
+    await shareEntity(fx.orgA, { consentId: consent.id, entityType: 'reports', entityId: orgAReportId });
+    expect(await hasSharedAccess(fx.orgB, fx.childA1, 'reports', orgAReportId)).toBe(true);
+
+    await revokeConsent({ organizationId: fx.orgA, parentId: fx.parentA1 }, consent.id);
+
+    // REVOKED consent → giriş DƏRHAL DENIED (entity share hələ DB-də qalsa belə, consent artıq ACTIVE deyil)
+    expect(await hasSharedAccess(fx.orgB, fx.childA1, 'reports', orgAReportId)).toBe(false);
+  });
 
   test('TEST 10 Composite FK: cross-tenant specialist_child_assignment DB səviyyəsində rədd olunur', async () => {
     const c = await migratorClient();

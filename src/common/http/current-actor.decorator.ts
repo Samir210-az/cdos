@@ -5,6 +5,7 @@ export interface ActorContext {
   memberId: string;
   userId: string;
   sessionId: string;
+  requestId?: string;
 }
 
 /** Faz 3.15: JwtAuthGuard tərəfindən request-ə əlavə olunan actor context-i çıxarır. */
