@@ -40,28 +40,31 @@ export class DomainExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const res = ctx.getResponse<Response>();
+    const req = ctx.getRequest();
+    // Faz 3.18 bənd 6: request correlation — error response-da da eyni ID.
+    const requestId: string | undefined = req?.requestId;
 
     if (exception instanceof HttpException) {
-      res.status(exception.getStatus()).json({ error: exception.message });
+      res.status(exception.getStatus()).json({ error: exception.message, requestId });
       return;
     }
 
     const err = exception as { code?: string; message?: string };
     if (err?.code && CODE_TO_STATUS[err.code]) {
-      res.status(CODE_TO_STATUS[err.code]).json({ error: err.message ?? err.code, code: err.code });
+      res.status(CODE_TO_STATUS[err.code]).json({ error: err.message ?? err.code, code: err.code, requestId });
       return;
     }
 
     const pgErr = exception as { code?: string; message?: string };
     if (pgErr?.code && PG_CODE_TO_STATUS[pgErr.code]) {
       // DB constraint pozuntusu — xam Postgres mesajı DEYİL, ümumi, təhlükəsiz mesaj
-      res.status(PG_CODE_TO_STATUS[pgErr.code]).json({ error: 'Sorğu mövcud data integrity qaydalarını pozur.' });
+      res.status(PG_CODE_TO_STATUS[pgErr.code]).json({ error: 'Sorğu mövcud data integrity qaydalarını pozur.', requestId });
       return;
     }
 
     // gerçəkdən gözlənilməyən xəta — heç bir daxili detal ötürülmür
     // eslint-disable-next-line no-console
-    console.error('Unhandled exception:', exception);
-    res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'Daxili server xətası.' });
+    console.error('Unhandled exception:', requestId ? `[${requestId}]` : '', exception);
+    res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'Daxili server xətası.', requestId });
   }
 }

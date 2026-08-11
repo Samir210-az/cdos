@@ -1,6 +1,8 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { DomainExceptionFilter } from './common/http/domain-exception.filter';
+import { RequestIdMiddleware } from './common/http/request-id.middleware';
+import { HealthController } from './common/health/health.controller';
 import { AuthController } from './modules/auth/http/auth.controller';
 import { AssignmentsController } from './modules/assignments/http/assignments.controller';
 import { AssessmentsController } from './modules/assessments/http/assessments.controller';
@@ -25,6 +27,7 @@ import { ClinicalProfilesController } from './modules/children/http/clinical-pro
  */
 @Module({
   controllers: [
+    HealthController,
     AuthController,
     AssignmentsController,
     AssessmentsController,
@@ -44,4 +47,8 @@ import { ClinicalProfilesController } from './modules/children/http/clinical-pro
   ],
   providers: [{ provide: APP_FILTER, useClass: DomainExceptionFilter }],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(RequestIdMiddleware).forRoutes('*');
+  }
+}
